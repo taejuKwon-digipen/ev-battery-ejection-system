@@ -102,6 +102,10 @@ HC-SR04 초음파 센서를 이용합니다.
 | D12 | L293D Input 3 |
 | D13 | L293D Input 4 |
 
+## Tinkercad 전체 회로
+
+![EV 배터리 능동형 안전 분리 시스템 Tinkercad 회로](circuit.png)
+
 ## 실제 하드웨어와의 차이
 
 Tinkercad에서는 실제 센서 일부를 사용할 수 없어 다음과 같이 대체하여
