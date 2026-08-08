@@ -38,3 +38,7 @@
 FSM(정상 → 경고 → 정차 → 분리) 및 BMS 센서 필터링을 구현한 스케치는 [`arduino/BatteryEjectionSystem/BatteryEjectionSystem.ino`](arduino/BatteryEjectionSystem/BatteryEjectionSystem.ino)에 있습니다.
 
 캘리브레이션 값과 테스트 전 확인해야 할 주의사항은 [`CAUTIONS.md`](CAUTIONS.md)를 참고하세요.
+
+부품 목록, 배선 매핑, 차체/래치 기구 설계는 [`HARDWARE.md`](HARDWARE.md)를 참고하세요.
+
+센서별 상세 스펙과 선택 기준, 구매 체크리스트는 [`SENSORS.md`](SENSORS.md)를 참고하세요.
