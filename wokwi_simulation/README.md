@@ -71,6 +71,7 @@ DANGER
 
 const int tempPin = A0;
 const int currentPin = A1;
+const int buzzerPin = 8;
 
 Servo servo1;
 Servo servo2;
@@ -90,6 +91,7 @@ void setup() {
   servo2.attach(10);
 
   pinMode(7, OUTPUT);
+  pinMode(buzzerPin, OUTPUT);
 
   servo1.write(0);
   servo2.write(0);
@@ -110,6 +112,8 @@ void loop() {
   if (state == NORMAL) {
     digitalWrite(7, LOW);
 
+    noTone(buzzerPin);
+
     servo1.write(0);
     servo2.write(0);
   }
@@ -117,12 +121,16 @@ void loop() {
   if (state == WARNING) {
     digitalWrite(7, HIGH);
 
+    tone(buzzerPin, 1000);
+
     servo1.write(0);
     servo2.write(0);
   }
 
   if (state == DANGER) {
     digitalWrite(7, HIGH);
+
+    tone(buzzerPin, 2000);
 
     servo1.write(90);
     servo2.write(90);
@@ -184,7 +192,7 @@ void loop() {
 ↓
 WARNING
 ↓
-LED 경고
+LED 및 부저 경고
 ↓
 DANGER
 ↓
@@ -197,9 +205,10 @@ DANGER
 
 ## 시뮬레이션 결과
 
-- NTC 센서를 이용한 실시간 온도 모니터링
+- NTC 센서를 이용한 배터리 온도 상태 모니터링
 - 가변저항을 이용한 전류 이상 상황 시뮬레이션
 - FSM 기반 위험 상태 판단
 - LED를 이용한 시각적 경고
+- 부저를 이용한 청각적 경고
 - 서보모터를 이용한 배터리 분리
 - 시리얼 모니터를 통한 실시간 상태 확인
