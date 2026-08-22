@@ -67,7 +67,9 @@ PioneerP3DX (차체)
 | `ev_ejection.ttt` | CoppeliaSim 씬 파일 (차체 + 배터리 + 락킹 링크) |
 | `ejection_sim.py` | 씬을 제어하는 파이썬 모듈 (`connect / drive / eject / escape`) |
 | `check_scene.py` | 씬 연결 및 오브젝트 이름 진단 스크립트 |
-| `battery_drop_test.py` | 위 데모 시나리오를 자동 실행하는 테스트 스크립트 |
+| `battery_drop_test.py` | 위 데모 시나리오를 자동 실행하는 테스트 스크립트 (분리 직전 사람이 Enter로 확인) |
+| `battery_auto_drop_test.py` | 사람 확인 없이, 차가 정차한 채 일정 시간 가만히 있으면 자동으로 분리하는 시나리오 테스트 |
+| `battery_drop_only_test.py` | 주행 없이 연결 직후 배터리 분리(낙하)만 바로 확인하는 최소 테스트 |
 | `images/coppeliasim_scene.png` | 씬 스크린샷 |
 
 씬을 처음부터 직접 만드는 전체 과정(용어 설명 포함, 왕초보용)은 [`SIMULATION.md`](SIMULATION.md)에 단계별로 정리되어 있습니다.

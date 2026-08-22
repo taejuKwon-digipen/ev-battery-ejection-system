@@ -184,6 +184,48 @@ class EjectionSim:
         """STOPPED 상태용 정차."""
         self.drive(0.0, 0.0)
 
+    # -- 정지 감지 (사람 확인 없이 자동 분리할 때 사용) -------------------------
+
+    def speed(self) -> float:
+        """차체의 현재 선속도 크기(m/s)."""
+        self._require_connected()
+        robot = self.handles["robot"]
+        try:
+            lin, _ang = self.sim.getObjectVelocity(robot)
+        except Exception:
+            lin, _ang = self.sim.getVelocity(robot)
+        return math.sqrt(lin[0] ** 2 + lin[1] ** 2 + lin[2] ** 2)
+
+    def is_stationary(self, speed_threshold: float = 0.01) -> bool:
+        """차체 속도가 threshold 미만이면 정지 상태로 간주."""
+        return self.speed() < speed_threshold
+
+    def wait_until_stationary(
+        self,
+        stable_duration: float = 1.0,
+        speed_threshold: float = 0.01,
+        poll_interval: float = 0.1,
+        timeout: float = 10.0,
+    ) -> bool:
+        """
+        차체가 stable_duration 초 동안 끊김 없이 정지 상태(속도 < threshold)를
+        유지하면 True. timeout 안에 그런 구간이 없으면 False.
+        중간에 다시 움직이면(예: 관성으로 살짝 밀림) 정지 지속 시간이 리셋된다.
+        """
+        self._require_connected()
+        start = time.time()
+        stationary_since = None
+        while time.time() - start < timeout:
+            if self.is_stationary(speed_threshold):
+                if stationary_since is None:
+                    stationary_since = time.time()
+                elif time.time() - stationary_since >= stable_duration:
+                    return True
+            else:
+                stationary_since = None
+            time.sleep(poll_interval)
+        return False
+
     # -- 배터리 분리 ---------------------------------------------------------
 
     def arm(self):
@@ -211,6 +253,35 @@ class EjectionSim:
             print("[EjectionSim] confirm_eject() 무시됨 - 먼저 arm()으로 분리를 준비하세요.")
             return False
         return self.eject()
+
+    def auto_confirm_eject(
+        self,
+        safety_delay: float = 1.5,
+        speed_threshold: float = 0.01,
+        timeout: float | None = None,
+    ) -> bool:
+        """
+        사람의 Enter 입력(confirm_eject) 대신, 차체가 safety_delay 초 동안
+        계속 정지해 있으면 "주변에 위험이 없다"고 자동 판단하고 confirm_eject()를
+        호출한다. 실차라면 후방 클리어 초음파 센서가 이 역할을 대신한다.
+
+        arm() 이후에만 동작하며, safety_delay 안에 정지 상태가 흔들림 없이
+        유지되지 않으면(=계속 움직이거나 관성으로 재출발) 분리하지 않고 False.
+        """
+        if not self._armed:
+            print("[EjectionSim] auto_confirm_eject() 무시됨 - 먼저 arm()으로 분리를 준비하세요.")
+            return False
+
+        print(f"[EjectionSim] 자동 안전 확인 중... (정지 상태 {safety_delay:.1f}s 유지되면 자동 분리)")
+        stable = self.wait_until_stationary(
+            stable_duration=safety_delay,
+            speed_threshold=speed_threshold,
+            timeout=timeout if timeout is not None else safety_delay + 5.0,
+        )
+        if not stable:
+            print("[EjectionSim] 자동 안전 확인 실패 - 정지 상태가 유지되지 않아 분리를 취소합니다.")
+            return False
+        return self.confirm_eject()
 
     def eject(self) -> bool:
         """
