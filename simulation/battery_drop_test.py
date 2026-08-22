@@ -10,7 +10,13 @@ battery_drop_test.py
   python battery_drop_test.py
 
 기대 동작:
-  시뮬 시작 -> 3초 전진 -> 정차 -> 배터리 링크 해제 -> 배터리 낙하 -> 차량 이탈
+  시뮬 시작 -> 3초 전진 -> 정차 -> ARMED(분리 대기) -> 사람 확인(Enter) -> 배터리 링크 해제
+  -> 배터리 낙하 -> 그 자리에서 정차 유지 (도망가지 않음)
+
+  "정차했다고 바로 떨어뜨리면 다른 차가 밟을 수 있다"는 문제 때문에, 위험 감지 즉시
+  eject()를 부르지 않는다. arm()으로 정차 + 분리 준비만 하고, 안전 확인(이 테스트에서는
+  Enter 키 입력으로 대신함 - 실차라면 후방 클리어 센서 또는 기계식 릴리즈 레버) 후에만
+  confirm_eject()로 실제 분리를 실행한다.
 """
 
 import time
@@ -47,9 +53,17 @@ def main() -> int:
     sim.slow()
     time.sleep(1.0)
 
-    # --- STOPPED -> EJECTED ------------------------------------------------
-    print("[4] 위험 감지 - 정차 후 배터리 분리")
-    sim.eject()
+    # --- STOPPED -> ARMED ----------------------------------------------------
+    print("[4] 위험 감지 - 정차 후 분리 대기(ARMED)")
+    sim.arm()
+
+    # --- 안전 확인 (실차: 후방 클리어 센서 또는 기계식 릴리즈 레버) --------------
+    print("    배터리를 분리하려면 수동으로 래치를 당겨야 합니다.")
+    input("    래치를 당기려면 Enter를 누르세요... ")
+
+    # --- ARMED -> EJECTED ----------------------------------------------------
+    print("[5] 분리 확정")
+    sim.confirm_eject()
 
     # 낙하 관찰
     for i in range(6):
@@ -59,7 +73,7 @@ def main() -> int:
     h_after = sim.battery_height()
     dropped = (h_before - h_after) > DROP_THRESHOLD_M
 
-    print(f"[5] 최종 배터리 높이 : {h_after:.4f} m  (하강 {h_before - h_after:.4f} m)")
+    print(f"[6] 최종 배터리 높이 : {h_after:.4f} m  (하강 {h_before - h_after:.4f} m)")
 
     if dropped:
         print("    ✅ 낙하 성공 - 링크 해제 매커니즘 정상 동작")
@@ -69,13 +83,13 @@ def main() -> int:
         print("       - EV_Battery 가 EV_Battery_Link 의 자식으로 되어 있는지")
         print("       - 배터리가 차체나 바닥에 끼어 있지 않은지")
 
-    # --- 대피 연출 (선택) ---------------------------------------------------
-    print("[6] 배터리를 버리고 현장 이탈...")
-    sim.escape(speed=3.0, duration=2.0)
+    # --- 분리 후 정차 유지 ---------------------------------------------------
+    print("[7] 분리 완료 - 도망가지 않고 그 자리에 정차 유지")
+    sim.halt()
 
     time.sleep(1.0)
     sim.stop()
-    print("[7] 테스트 종료")
+    print("[8] 테스트 종료")
     return 0 if dropped else 2
 
 

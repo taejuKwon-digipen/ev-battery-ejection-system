@@ -27,6 +27,7 @@
 | F8 | 분리 후 차체는 현장에서 이탈(ESCAPE)한다 | CoppeliaSim `sim.escape()` |
 | F9 | 리셋 버튼으로 EJECTED → NORMAL 복귀가 가능해야 한다(반복 테스트용) | `handleResetButton()` |
 | F10 | 실제 하드웨어 제작 전에 회로/FSM 로직(Tinkercad)과 물리적 분리 동작(CoppeliaSim)을 각각 시뮬레이션으로 선검증한다 | `simulation/` |
+| F11 | WARNING 상태 진입 시 냉각팬을 가동해 열폭주 진행을 먼저 예방 시도한다(격리는 최후 수단) | `BatteryEjectionSystem.ino` `PIN_COOLING_FAN` |
 
 ### 1-4. 비기능 요구사항 (Non-functional Requirements)
 
@@ -41,6 +42,7 @@
 - 실제 완성차 규격이 아닌 소형 모빌리티(테스트 차체) 기준 프로토타입
 - 실제 리튬셀 열폭주가 아닌 센서 값 모사(Tinkercad) / 물리 낙하 모사(CoppeliaSim)로 검증
 - 장애물 회피(HC-SR04)는 1단계 주행 로직으로 별도 확장 항목
+- 냉각팬(F11)은 **이미 시작된 열폭주를 진압하는 수단이 아니다.** 셀 내부 화학반응 발열 속도는 소형 공랭 팬의 방열 능력을 압도하므로(실차급 액체냉각 시스템조차 열폭주 전파를 막지 못함), 팬의 역할은 WARNING 단계(임계치 도달 전 완만한 온도 상승)에서 위험 단계 진입 자체를 지연·방지하는 예방 조치로 한정한다. 냉각에도 불구하고 위험 조건이 충족되면 즉시 STOPPED→EJECTED(격리)로 전환하며, 팬의 실패를 전제로 격리 로직이 항상 대기하고 있다.
 
 ---
 
@@ -57,6 +59,8 @@
 | B. 전원 즉시 차단 | 릴레이로 배터리 회로 차단 | ❌ 단독 미채택 | 열폭주는 전기적 차단만으로 막을 수 없음(이미 진행 중인 발열) |
 | C. **물리적 분리(Ejection)** | 래치 해제 후 배터리를 차체에서 낙하·이격 | ✅ 채택 | 열원 자체를 차체(승객/적재물)로부터 물리적으로 격리 — 확산 원천 차단 |
 | D. 사람이 수동 분리 | 운전자가 버튼으로 분리 | ❌ 보조 수단으로만 채택 | 열폭주는 초 단위로 진행 → 자동 판단이 필수, 수동은 리셋 등 보조 기능으로만 사용 |
+
+> **B(전원 차단)에 대한 보완**: 실제 양산 EV는 이미 액체냉각 기반 열관리 시스템을 기본 탑재하지만, 냉각은 "예방/지연"에는 효과적이어도 이미 시작된 열폭주의 급격한 발열 속도를 따라가지 못해 "완전 진압" 수단은 될 수 없다. 그래서 본 프로젝트는 B를 확장해, WARNING 단계에서 냉각팬을 먼저 가동해 열폭주 진행 자체를 막는 **예방 시도(F11)**를 1차 방어선으로 두고, 그래도 진행되면 C(물리적 분리)로 넘어가는 **계층적 방어(defense in depth)** 구조로 설계했다. 즉 냉각과 분리는 양자택일이 아니라 예방(냉각) → 최후수단(격리) 순서의 보완 관계다.
 
 ### 2-3. 접근 전략
 1. **감지(BMS)** — 온도/전류/전압 3종 센서 + 필터링으로 오탐 없는 위험 판단
@@ -76,6 +80,7 @@ sequenceDiagram
     participant M as Arduino FSM
     participant I as LED/부저
     participant D as 구동 모터
+    participant F as 냉각팬
     participant L as 래치 서보
 
     loop 100ms마다 샘플링
@@ -86,16 +91,24 @@ sequenceDiagram
     M->>M: isWarningCondition() 판정
     M->>I: WARNING (황색 LED + 경고음)
     M->>D: 감속 (PIN_MOTOR_EN 유지, 속도 하향)
+    M->>F: 냉각팬 ON (예방 시도, 격리 전 1차 대응)
 
-    M->>M: isCriticalCondition() 판정 (급상승률 OR 과전류/전압이상)
-    M->>D: STOPPED (모터 EN LOW, 즉시 정차)
-    M->>I: 적색 LED 점멸 + 경고음(2500Hz)
+    alt 냉각으로 정상 범위 복귀
+        M->>M: 정상 복귀 판정
+        M->>F: 냉각팬 OFF
+        M->>I: NORMAL 복귀 (예방 성공)
+    else 냉각에도 위험 지속
+        M->>M: isCriticalCondition() 판정 (급상승률 OR 과전류/전압이상)
+        M->>D: STOPPED (모터 EN LOW, 즉시 정차)
+        M->>I: 적색 LED 점멸 + 경고음(2500Hz)
 
-    Note over M: EJECT_DELAY_MS(3s) 대기 - 대피 유예시간
+        Note over M: EJECT_DELAY_MS(3s) 대기 - 대피 유예시간
 
-    M->>L: EJECTED - 서보 SERVO_RELEASE_ANGLE(90°) 회전
-    L-->>L: 락킹 링크 해제 → 배터리 자유낙하
-    M->>I: 적색 LED 고정 + 경고음(3000Hz 점멸)
+        M->>L: EJECTED - 서보 SERVO_RELEASE_ANGLE(90°) 회전
+        L-->>L: 락킹 링크 해제 → 배터리 자유낙하
+        M->>F: 냉각팬 OFF (배터리 분리됨, 냉각 대상 없음)
+        M->>I: 적색 LED 고정 + 경고음(3000Hz 점멸)
+    end
 
     Note over M: 리셋 버튼 입력 시에만 NORMAL 복귀
 ```
@@ -130,7 +143,7 @@ enum SystemState { NORMAL, WARNING, STOPPED, EJECTED }
 | 상태 | 진입 조건 | 탈출 조건 |
 | --- | --- | --- |
 | NORMAL | 초기값 / WARNING에서 정상 복귀 | 위험 조건 충족 시 WARNING·STOPPED로 |
-| WARNING | `filteredTempC ≥ TEMP_WARNING_C` OR `filteredCurrentA ≥ CURRENT_WARNING_A` | 정상 복귀 또는 위험 조건 충족 |
+| WARNING | `filteredTempC ≥ TEMP_WARNING_C` OR `filteredCurrentA ≥ CURRENT_WARNING_A` (진입 시 냉각팬 가동으로 예방 시도) | 정상 복귀(예방 성공) 또는 위험 조건 충족(예방 실패 → STOPPED) |
 | STOPPED | `isCriticalCondition()` = true | `EJECT_DELAY_MS` 경과 시 자동 진행 |
 | EJECTED | STOPPED에서 유예시간 경과 | 리셋 버튼(`PIN_RESET_BTN`) |
 
