@@ -79,20 +79,29 @@ Servo servo2;
 enum State {
   NORMAL,
   WARNING,
-  DANGER
+  STOPPED,
+  EJECTED
 };
-
 State state = NORMAL;
+
+const unsigned long EJECT_DELAY_MS = 1500; // STOPPED 유지 후 EJECTED로 넘어가기까지의 유예시간
+unsigned long stoppedSince = 0;
+
+// ---------- 실측 캘리브레이션 참고값 ----------
+// 평상시(포텐셔미터 기본값) 전류 raw ≈ 197 / 전류는 0~1023 전 범위 사용 가능
+// 8도: temp raw ≈ 700 / 23도: temp raw ≈ 530  (1도당 raw 약 -11.3 추정)
+// 60도(raw 110) 추정치는 실측 범위(8~23도) 밖 외삽이라 헤어드라이어로 도달 불가능해서
+// STOPPED 미진입 문제 발생 -> 실측 가능 범위 안으로 완화
+const int WARNING_TEMP_TH = 280; // 약 45도 추정 (기존 700 -> 280)
+const int CRIT_TEMP_TH    = 420; // 약 30도 추정치, 헤어드라이어로 도달 가능한 범위로 완화 (110 -> 420)
+const int CRIT_CURRENT_TH = 530; // 500 -> 530으로 조정 (실측 경계값에 맞춤)
 
 void setup() {
   Serial.begin(9600);
-
   servo1.attach(9);
   servo2.attach(10);
-
   pinMode(7, OUTPUT);
   pinMode(buzzerPin, OUTPUT);
-
   servo1.write(0);
   servo2.write(0);
 }
@@ -101,57 +110,63 @@ void loop() {
   int temp = analogRead(tempPin);
   int current = analogRead(currentPin);
 
-  if (temp < 650 && current > 500) {
-    state = DANGER;
-  } else if (temp < 700) {
-    state = WARNING;
-  } else {
-    state = NORMAL;
+  // 상태 판단 (EJECTED는 한 번 도달하면 유지 — 배터리가 이미 분리됐으므로 되돌릴 이유 없음)
+  if (state != EJECTED) {
+    if (temp < CRIT_TEMP_TH && current > CRIT_CURRENT_TH) {
+      if (state != STOPPED) {
+        state = STOPPED;
+        stoppedSince = millis();
+      }
+    } else if (temp < WARNING_TEMP_TH) {
+      state = WARNING;
+    } else {
+      state = NORMAL;
+    }
+  }
+
+  // STOPPED 상태로 EJECT_DELAY_MS 이상 머물렀으면 EJECTED로 전이
+  if (state == STOPPED && millis() - stoppedSince >= EJECT_DELAY_MS) {
+    state = EJECTED;
   }
 
   if (state == NORMAL) {
     digitalWrite(7, LOW);
-
     noTone(buzzerPin);
-
     servo1.write(0);
     servo2.write(0);
   }
-
   if (state == WARNING) {
     digitalWrite(7, HIGH);
-
     tone(buzzerPin, 1000);
-
     servo1.write(0);
     servo2.write(0);
   }
-
-  if (state == DANGER) {
+  if (state == STOPPED) {
     digitalWrite(7, HIGH);
-
     tone(buzzerPin, 2000);
-
-    servo1.write(90);
+    servo1.write(0);   // 아직 래치는 잠긴 상태 (정지만 하고 대기)
+    servo2.write(0);
+  }
+  if (state == EJECTED) {
+    digitalWrite(7, HIGH);
+    tone(buzzerPin, 3000);
+    servo1.write(90);  // 유예시간이 지나야 실제로 분리
     servo2.write(90);
   }
 
   Serial.print("Temperature: ");
   Serial.print(temp);
-
   Serial.print(" Current: ");
   Serial.print(current);
-
   Serial.print(" State: ");
-
   if (state == NORMAL)
     Serial.println("NORMAL");
-
   if (state == WARNING)
     Serial.println("WARNING");
-
-  if (state == DANGER)
-    Serial.println("DANGER");
+  if (state == STOPPED)
+    Serial.println("STOPPED");
+  if (state == EJECTED)
+    Serial.println("EJECTED");
 
   delay(100);
 }
